@@ -38,6 +38,10 @@ class Employee(Base):
     frequence_deplacement = Column(String(50))
     annees_depuis_la_derniere_promotion = Column(Integer)
     attrition = Column(Integer, comment="0=resté, 1=parti")
+    annees_dans_le_poste_actuel = Column(Integer)
+    annes_sous_responsable_actuel = Column(Integer)
+    note_evaluation_actuelle = Column(Integer)
+    niveau_hierarchique_poste = Column(Integer)
 
 
 class PredictionLogDB(Base):
