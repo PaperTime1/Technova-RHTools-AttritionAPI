@@ -1,17 +1,17 @@
 """Tests du pipeline de preprocessing."""
 
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
 
 from app.models.schemas import EmployeeInput
+from app.services.prediction import get_prediction_service
 from app.services.preprocessing import (
     employee_to_dataframe,
-    engineer_features,
     encode_features,
+    engineer_features,
     preprocess_input,
 )
-from app.services.prediction import get_prediction_service
 
 
 class TestEmployeeToDataframe:
@@ -45,12 +45,14 @@ class TestEngineerFeatures:
     def test_satisfaction_moyenne_value(self, sample_employee_data):
         df = pd.DataFrame([sample_employee_data])
         result = engineer_features(df)
-        expected = np.mean([
-            sample_employee_data["satisfaction_employee_environnement"],
-            sample_employee_data["satisfaction_employee_nature_travail"],
-            sample_employee_data["satisfaction_employee_equipe"],
-            sample_employee_data["satisfaction_employee_equilibre_pro_perso"],
-        ])
+        expected = np.mean(
+            [
+                sample_employee_data["satisfaction_employee_environnement"],
+                sample_employee_data["satisfaction_employee_nature_travail"],
+                sample_employee_data["satisfaction_employee_equipe"],
+                sample_employee_data["satisfaction_employee_equilibre_pro_perso"],
+            ]
+        )
         assert result["satisfaction_moyenne"].iloc[0] == pytest.approx(expected)
 
     def test_adds_anciennete_vs_experience(self, sample_employee_data):

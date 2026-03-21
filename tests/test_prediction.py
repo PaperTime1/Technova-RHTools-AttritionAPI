@@ -1,8 +1,7 @@
 """Tests du service de prédiction."""
 
-import pytest
-from app.services.prediction import get_prediction_service, PredictionService
 from app.models.schemas import EmployeeInput
+from app.services.prediction import get_prediction_service
 
 
 class TestPredictionService:

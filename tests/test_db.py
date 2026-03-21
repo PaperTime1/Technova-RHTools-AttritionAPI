@@ -1,9 +1,8 @@
 """Tests des opérations sur la base de données."""
 
-import pytest
-from app.models.database import PredictionLogDB, Employee
+from app.db.crud import get_prediction_logs, log_prediction
+from app.models.database import Employee
 from app.models.schemas import PredictionOutput
-from app.db.crud import log_prediction, get_prediction_logs
 
 
 class TestPredictionLogs:

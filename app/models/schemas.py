@@ -1,7 +1,8 @@
 """Schémas Pydantic pour la validation des données d'entrée et de sortie."""
 
-from pydantic import BaseModel, Field
 from datetime import datetime
+
+from pydantic import BaseModel, Field
 
 
 class EmployeeInput(BaseModel):
@@ -16,11 +17,12 @@ class EmployeeInput(BaseModel):
     genre: str = Field(..., pattern="^(M|F)$", description="Genre (M ou F)")
     revenu_mensuel: float = Field(..., ge=0, description="Revenu mensuel en euros")
     statut_marital: str = Field(
-        ..., pattern="^(Célibataire|Marié\\(e\\)|Divorcé\\(e\\))$",
-        description="Statut marital"
+        ..., pattern="^(Célibataire|Marié\\(e\\)|Divorcé\\(e\\))$", description="Statut marital"
     )
     poste: str = Field(..., description="Intitulé du poste")
-    nombre_experiences_precedentes: int = Field(..., ge=0, description="Nombre d'employeurs précédents")
+    nombre_experiences_precedentes: int = Field(
+        ..., ge=0, description="Nombre d'employeurs précédents"
+    )
     annee_experience_totale: int = Field(..., ge=0, description="Années d'expérience totale")
     annees_dans_l_entreprise: int = Field(..., ge=0, description="Années chez TechNova")
 
@@ -40,8 +42,7 @@ class EmployeeInput(BaseModel):
     niveau_education: int = Field(..., ge=1, le=5)
     domaine_etude: str = Field(..., description="Domaine d'études")
     frequence_deplacement: str = Field(
-        ..., pattern="^(Aucun|Occasionnel|Frequent)$",
-        description="Fréquence de déplacement"
+        ..., pattern="^(Aucun|Occasionnel|Frequent)$", description="Fréquence de déplacement"
     )
     annees_depuis_la_derniere_promotion: int = Field(..., ge=0)
 
@@ -84,7 +85,9 @@ class PredictionOutput(BaseModel):
     prediction: int = Field(..., ge=0, le=1, description="Prédiction binaire (0=resté, 1=parti)")
     risk_level: str = Field(..., description="Niveau de risque (faible, modéré, élevé, critique)")
     threshold: float = Field(..., description="Seuil de décision utilisé")
-    top_factors: list[dict] = Field(default_factory=list, description="Top facteurs de risque (SHAP)")
+    top_factors: list[dict] = Field(
+        default_factory=list, description="Top facteurs de risque (SHAP)"
+    )
 
 
 class PredictionLog(BaseModel):

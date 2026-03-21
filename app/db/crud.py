@@ -1,8 +1,9 @@
 """Opérations CRUD pour la base de données."""
 
 from sqlalchemy.orm import Session
-from app.models.database import PredictionLogDB, Employee
-from app.models.schemas import EmployeeInput, PredictionOutput
+
+from app.models.database import Employee, PredictionLogDB
+from app.models.schemas import PredictionOutput
 
 
 def log_prediction(
@@ -26,12 +27,7 @@ def log_prediction(
 
 def get_prediction_logs(db: Session, limit: int = 50) -> list[PredictionLogDB]:
     """Récupère les dernières prédictions."""
-    return (
-        db.query(PredictionLogDB)
-        .order_by(PredictionLogDB.timestamp.desc())
-        .limit(limit)
-        .all()
-    )
+    return db.query(PredictionLogDB).order_by(PredictionLogDB.timestamp.desc()).limit(limit).all()
 
 
 def get_employees(db: Session, skip: int = 0, limit: int = 100) -> list[Employee]:

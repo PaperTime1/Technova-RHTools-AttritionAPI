@@ -4,8 +4,6 @@ Charge les artefacts ML et expose la logique de prédiction.
 """
 
 import joblib
-import numpy as np
-from pathlib import Path
 
 from app.config import get_settings
 from app.models.schemas import EmployeeInput, PredictionOutput

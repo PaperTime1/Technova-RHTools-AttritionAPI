@@ -1,7 +1,5 @@
 """Tests des endpoints de l'API."""
 
-import pytest
-
 
 class TestHealth:
     """Tests du endpoint /health."""

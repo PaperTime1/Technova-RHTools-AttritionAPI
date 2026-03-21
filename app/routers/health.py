@@ -1,8 +1,9 @@
 """Endpoint de santé de l'API."""
 
 from fastapi import APIRouter
-from app.models.schemas import HealthResponse
+
 from app.config import get_settings
+from app.models.schemas import HealthResponse
 from app.services.prediction import get_prediction_service
 
 router = APIRouter(tags=["Santé"])

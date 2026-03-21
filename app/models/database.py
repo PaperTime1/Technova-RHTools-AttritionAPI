@@ -1,6 +1,6 @@
 """Modèles SQLAlchemy pour PostgreSQL."""
 
-from sqlalchemy import Column, Integer, Float, String, DateTime, JSON, func
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase
 
 

@@ -1,10 +1,11 @@
 """Application FastAPI — API de prédiction d'attrition TechNova Partners."""
 
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI
+
 from app.config import get_settings
-from app.routers import predict, health
+from app.routers import health, predict
 from app.services.prediction import get_prediction_service
 
 

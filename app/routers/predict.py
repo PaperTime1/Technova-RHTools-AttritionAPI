@@ -1,13 +1,13 @@
 """Endpoints de prédiction d'attrition."""
 
-from fastapi import APIRouter, Depends, HTTPException, Security, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models.schemas import EmployeeInput, PredictionOutput, PredictionLog
-from app.services.prediction import get_prediction_service
+from app.db.crud import get_prediction_logs, log_prediction
 from app.db.session import get_db
-from app.db.crud import log_prediction, get_prediction_logs
+from app.models.schemas import EmployeeInput, PredictionLog, PredictionOutput
+from app.services.prediction import get_prediction_service
 
 router = APIRouter(prefix="/predict", tags=["Prédictions"])
 
@@ -25,7 +25,7 @@ def verify_api_key(x_api_key: str = Header(..., description="Clé API pour l'aut
     response_model=PredictionOutput,
     summary="Prédire le risque d'attrition d'un employé",
     description="Envoie les données d'un employé et reçoit la probabilité de départ, "
-                "la prédiction binaire et le niveau de risque.",
+    "la prédiction binaire et le niveau de risque.",
 )
 async def predict_attrition(
     employee: EmployeeInput,
