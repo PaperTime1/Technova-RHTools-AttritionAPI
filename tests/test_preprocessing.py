@@ -90,11 +90,15 @@ class TestEncodeFeatures:
         assert result.select_dtypes(include="object").shape[1] == 0
 
     def test_ohe_creates_columns(self, sample_employee_data):
+        """Vérifie que l'OHE crée des colonnes pour les catégorielles."""
         df = pd.DataFrame([sample_employee_data])
         result = encode_features(df)
-        # Au moins une colonne poste_ doit exister
-        poste_cols = [c for c in result.columns if c.startswith("poste_")]
-        assert len(poste_cols) > 0
+        # Après OHE, les colonnes originales (str) ne doivent plus exister
+        assert "statut_marital" not in result.columns
+        assert "poste" not in result.columns
+        assert "domaine_etude" not in result.columns
+        # Et il ne doit rester aucune colonne object
+        assert result.select_dtypes(include="object").shape[1] == 0
 
 
 class TestPreprocessInput:

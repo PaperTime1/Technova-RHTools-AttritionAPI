@@ -101,12 +101,7 @@ def preprocess_input(employee: EmployeeInput, features: list[str], scaler) -> np
     df = df[features]
 
     # 5. Scaling
-    # Identifier les colonnes non-binaires (même logique que le P4)
-    cols_binaires = df.columns[df.iloc[0].isin([0, 1]) & (df.columns.str.contains("_") | df.columns.isin(["genre", "heure_supplementaires"]))]
-    cols_a_scaler = [c for c in features if c not in cols_binaires or df[c].nunique() > 2]
+    df_float = df.astype(float)
+    scaled_array = scaler.transform(df_float)
 
-    # Approche simplifiée : on scale toutes les colonnes comme le scaler a été fitté
-    df_scaled = df.copy()
-    df_scaled.iloc[:, :] = scaler.transform(df)
-
-    return df_scaled.values
+    return scaled_array
