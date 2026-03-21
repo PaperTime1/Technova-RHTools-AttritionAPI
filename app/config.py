@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     features_path: str = "artifacts/features_finales.joblib"
     threshold_path: str = "artifacts/seuil_final.joblib"
 
+    @property
+    def database_url_safe(self) -> str:
+        """Normalise l'URL pour SQLAlchemy (Fly.io utilise postgres://)."""
+        url = self.database_url
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        return url
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

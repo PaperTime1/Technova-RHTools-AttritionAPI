@@ -1,0 +1,52 @@
+# flyctl launch added from .gitignore
+# Python
+**\__pycache__
+**\*.py[cod]
+**\*.egg-info
+**\dist
+**\build
+**\.eggs
+
+# Environnement virtuel
+**\.venv
+**\venv
+**\env
+
+# IDE
+**\.vscode
+**\.idea
+**\*.swp
+**\*.swo
+
+# Environnement
+**\.env
+
+# Couverture de tests
+**\htmlcov
+**\.coverage
+**\coverage.xml
+
+# Jupyter
+**\.ipynb_checkpoints
+
+# OS
+**\.DS_Store
+**\Thumbs.db
+
+# uv
+**\uv.lock
+
+# Tests
+**\test.db
+
+# flyctl launch added from .pytest_cache\.gitignore
+# Created by pytest automatically.
+.pytest_cache\**\*
+
+# flyctl launch added from .venv\.gitignore
+.venv\**\*
+
+# flyctl launch added from htmlcov\.gitignore
+# Created by coverage.py
+htmlcov\**\*
+fly.toml

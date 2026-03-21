@@ -9,7 +9,7 @@ from app.config import get_settings
 
 def get_engine():
     settings = get_settings()
-    return create_engine(settings.database_url, echo=(settings.environment == "development"))
+    return create_engine(settings.database_url_safe, echo=(settings.environment == "development"))
 
 
 def get_session_factory():

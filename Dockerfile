@@ -14,6 +14,8 @@ RUN uv pip install --system --no-cache -r pyproject.toml
 # Copier le code source et les artefacts
 COPY app/ app/
 COPY artifacts/ artifacts/
+COPY scripts/ scripts/
+COPY data/ data/
 
 # Port exposé
 EXPOSE 8000
