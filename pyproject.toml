@@ -1,0 +1,52 @@
+[project]
+name = "technova-rhtools-attritionapi"
+version = "0.1.0"
+description = "API de prédiction d'attrition — TechNova Partners"
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+    # ── API ──
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+
+    # ── ML ──
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
+    "numpy>=1.26",
+    "pandas>=2.2",
+
+    # ── Base de données ──
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.14",
+
+    # ── Sécurité ──
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7",
+
+    # ── Utilitaires ──
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.7",
+    "pre-commit>=4.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short --cov=app --cov-report=term-missing --cov-report=html"
