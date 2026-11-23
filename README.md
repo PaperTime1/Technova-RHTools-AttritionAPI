@@ -91,7 +91,7 @@ make api-client NAME=moi ROLE=admin                      # affiche une clé d'AP
 make run                                                 # http://localhost:8000/docs
 ```
 
-Avec Docker : `make docker-build && make docker-run` (l'image tourne sans privilèges root et expose un `HEALTHCHECK` sur `/health`).
+**Le plus simple : Docker Compose** (base, initialisation et API en une commande), voir [Déploiement](#10-déploiement).
 
 ## 4. Utilisation de l'API
 
@@ -156,11 +156,11 @@ Niveaux de risque : `faible` (< 0,15), `modéré` (< seuil), `élevé` (< 0,60),
 
 **Bonnes pratiques appliquées.**
 
-- **Secrets hors du code** : configuration par variables d'environnement (`.env` ignoré par Git, `.env.example` sans valeurs réelles) ; en production, `fly secrets set` ; en CI, GitHub Secrets **par environnement**. Aucune clé n'a de valeur par défaut.
+- **Secrets hors du code** : configuration par variables d'environnement (`.env` ignoré par Git, `.env.example` sans valeurs réelles) ; en déploiement, le mot de passe PostgreSQL vient du `.env` lu par Docker Compose ; en CI, seul le `GITHUB_TOKEN` éphémère est utilisé (droits limités au job, expiré à la fin). Aucune clé n'a de valeur par défaut.
 - **Injection SQL** : impossible par construction, toutes les requêtes passent par l'ORM (requêtes paramétrées).
 - **Validation stricte** des entrées par Pydantic : une valeur hors domaine est rejetée (422) au lieu d'être encodée silencieusement.
-- **Moindre privilège** : en production, le rôle PostgreSQL de l'API n'a besoin que de `SELECT`/`INSERT` sur les 4 tables. La création du schéma est faite au déploiement par `release_command`.
-- **Conteneur** sans root, HTTPS forcé (`force_https` Fly.io), erreurs 500 sans trace interne exposée.
+- **Moindre privilège** : en production, le rôle PostgreSQL de l'API n'a besoin que de `SELECT`/`INSERT` sur les 4 tables. La création du schéma est faite au déploiement par le service `init` de Docker Compose.
+- **Conteneur** sans root ; base non exposée hors du réseau Docker ; erreurs 500 sans trace interne exposée. Exposée hors du poste, l'API doit passer derrière un reverse proxy HTTPS (Caddy, Traefik) : la clé d'API ne doit jamais circuler en clair.
 - **Artefacts** : `joblib`/`pickle` peut exécuter du code au chargement ; seuls les artefacts versionnés de ce dépôt sont chargés.
 - **RGPD** : les payloads contiennent des données personnelles RH (âge, salaire, genre, statut marital). L'accès à l'historique est réservé au rôle `admin` ; une durée de conservation des logs doit être fixée avec le DPO (purge des `prediction_requests` au-delà de N mois).
 
@@ -241,36 +241,44 @@ Workflow : [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 ```
 push / pull_request ──► lint (Ruff) ──► tests (PostgreSQL 16, couverture ≥ 85 %) ──► docker build
                                                                                        │
-                       push sur develop ───────────────► deploy-staging    (environment: staging)
-                       tag vX.Y.Z ─────────────────────► deploy-production (environment: production)
-                                                          └─► smoke test GET /health
+                       push sur develop ───► publish (environment: staging)    ──► image :staging
+                       tag vX.Y.Z ─────────► publish (environment: production) ──► images :X.Y.Z et :latest
+                                              └─► smoke test : docker compose up (base + init + API), GET /health
 ```
 
 | Environnement | Déclencheur | Base | Secrets |
 |---|---|---|---|
 | `development` | poste local | PostgreSQL local / SQLite (tests) | `.env` (non versionné) |
 | `test` | chaque push et PR | PostgreSQL 16 éphémère (service CI) | aucun secret requis |
-| `staging` | push sur `develop` | app Fly `technova-attrition-api-staging` et sa base | secret `FLY_API_TOKEN` |
-| `production` | tag `vX.Y.Z` | app Fly `technova-attrition-api` (`fly.toml`) et sa base | secret `FLY_API_TOKEN` ; approbation manuelle possible sur l'environnement |
+| `staging` | push sur `develop` | image `ghcr.io/…:staging`, démarrée avec sa propre base | `GITHUB_TOKEN` (éphémère) |
+| `production` | tag `vX.Y.Z` | image `ghcr.io/…:X.Y.Z` / `:latest`, `docker compose up` sur la machine cible | `GITHUB_TOKEN` ; `.env` sur la machine cible ; approbation manuelle possible sur l'environnement |
 
 - **Validation avant fusion** : la protection de branche sur `main` et `develop` exige que `lint` et `test` soient verts.
-- **Secrets** : `FLY_API_TOKEN` est stocké chiffré dans les secrets GitHub du dépôt ; `DATABASE_URL` est un secret Fly (posé par `fly postgres attach`). Ils sont injectés en variables d'environnement, masqués dans les logs, jamais transmis aux workflows de forks.
+- **Secrets** : la publication sur GitHub Container Registry utilise le `GITHUB_TOKEN` fourni par GitHub pour la durée du job (permission `packages: write` limitée à ce job), aucun secret longue durée. Les secrets sont masqués dans les logs et jamais transmis aux workflows de forks. Sur la machine cible, `POSTGRES_PASSWORD` est dans le `.env` (non versionné).
 - `concurrency` annule les exécutions obsolètes ; le cache uv garde le pipeline sous quelques minutes.
 
 ## 10. Déploiement
 
-**Local** (accepté par l'énoncé depuis septembre 2026) : section [Installation](#3-installation), ou l'image Docker.
-
-**Fly.io** (production) :
+**Déploiement local avec Docker Compose** (accepté par l'énoncé depuis le 10 septembre 2026, Hugging Face Spaces étant devenu payant).
 
 ```bash
-fly launch --no-deploy                          # première fois
-fly postgres create && fly postgres attach <db> # fournit DATABASE_URL en secret
-fly deploy                                      # ou via la CI (tag vX.Y.Z)
-fly ssh console -C "python scripts/create_api_client.py --name rh-dashboard"
+cp .env.example .env              # renseigner POSTGRES_PASSWORD
+docker compose up -d              # image publiée par la CI (ghcr.io), ou --build pour l'image locale
+docker compose exec api python scripts/create_api_client.py --name moi --role admin
+# → http://localhost:8000/docs
 ```
 
-À chaque déploiement, `release_command` (`fly.toml`) crée les tables manquantes et insère le dataset si nécessaire **avant** la mise en service ; en cas d'échec, l'ancienne version reste en ligne. Le *health check* Fly.io interroge `/health`. **Retour arrière** : redéployer le tag précédent (`git checkout v1.0.0 && fly deploy`).
+[`docker-compose.yml`](docker-compose.yml) démarre trois services :
+
+| Service | Rôle |
+|---|---|
+| `db` | PostgreSQL 16, données dans un volume persistant, non exposé hors du réseau Docker |
+| `init` | tâche unique : crée les tables manquantes et insère le dataset s'il est absent (idempotent) |
+| `api` | l'API, démarrée **seulement si `init` a réussi** ; `HEALTHCHECK` sur `/health`, sans root |
+
+**Mise à jour** : `docker compose pull && docker compose up -d` (ou fixer une version : `API_IMAGE=ghcr.io/papertime1/technova-rhtools-attritionapi:1.0.0`). **Retour arrière** : relancer avec le tag précédent. Les données restent dans le volume `pgdata`.
+
+Le même fichier sert à la CI : le job `publish` démarre la pile avec l'image qu'il vient de publier et vérifie `/health` avant de terminer.
 
 ## 11. Maintenance et mise à jour du modèle
 
@@ -278,7 +286,7 @@ fly ssh console -C "python scripts/create_api_client.py --name rh-dashboard"
 2. **Réentraînement** sur les données récentes (notebook P4 rejoué), même protocole : validation croisée stratifiée, seuil choisi sur les prédictions hors-fold.
 3. **Validation champion / challenger** hors ligne sur le même jeu de test ; promotion seulement si le coût métier baisse sans dégrader le rappel.
 4. **Livraison** : nouveaux artefacts dans `artifacts/`, mise à jour de la référence de non-régression, version **MINEURE** (`v1.1.0`) si le contrat d'API est inchangé, **MAJEURE** sinon. La `model_version` change automatiquement (empreinte des artefacts).
-5. **Déploiement** : staging, vérification, tag, production ; suivi rapproché du taux d'alerte les premières semaines.
+5. **Déploiement** : `develop` (image `staging`, vérification), puis tag `vX.Y.Z` (image de production) et `docker compose pull && docker compose up -d` ; suivi rapproché du taux d'alerte les premières semaines.
 
 ## 12. Conventions de développement
 
@@ -300,7 +308,8 @@ fly ssh console -C "python scripts/create_api_client.py --name rh-dashboard"
 | Authentification | Clés d'API hachées + rôles | Adapté au service à service, révocable, aucun secret en clair en base |
 | Tests | Pytest, PostgreSQL en CI | On teste sur le SGBD de production |
 | CI/CD | GitHub Actions + Environments | Environnements et secrets natifs, approbation de production |
-| Hébergement | Fly.io | Docker, PostgreSQL managé, `release_command` pour initialiser la base |
+| Registre d'images | GitHub Container Registry | Gratuit, lié au dépôt, authentifié par le `GITHUB_TOKEN` du job |
+| Déploiement | Docker Compose (local) | Une commande ; initialisation de la base avant l'API ; même pile en CI et sur la machine cible. Fly.io a été utilisé jusqu'à la fin de la période d'essai |
 
 ---
 
