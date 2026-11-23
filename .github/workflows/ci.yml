@@ -71,6 +71,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+          cache-dependency-glob: pyproject.toml  # pas de uv.lock versionné
 
       - name: Install dependencies
         run: uv pip install --system ".[dev]"
