@@ -250,11 +250,11 @@ push / pull_request ──► lint (Ruff) ──► tests (PostgreSQL 16, couver
 |---|---|---|---|
 | `development` | poste local | PostgreSQL local / SQLite (tests) | `.env` (non versionné) |
 | `test` | chaque push et PR | PostgreSQL 16 éphémère (service CI) | aucun secret requis |
-| `staging` | push sur `develop` | base Fly.io de staging | GitHub Environment `staging` : `FLY_API_TOKEN`, variable `FLY_APP` |
-| `production` | tag `vX.Y.Z` | base Fly.io de production | GitHub Environment `production` (approbation manuelle possible) |
+| `staging` | push sur `develop` | app Fly `technova-attrition-api-staging` et sa base | secret `FLY_API_TOKEN` |
+| `production` | tag `vX.Y.Z` | app Fly `technova-attrition-api` (`fly.toml`) et sa base | secret `FLY_API_TOKEN` ; approbation manuelle possible sur l'environnement |
 
 - **Validation avant fusion** : la protection de branche sur `main` et `develop` exige que `lint` et `test` soient verts.
-- **Secrets** : stockés chiffrés dans les GitHub Environments, injectés en variables d'environnement, masqués dans les logs, jamais transmis aux workflows de forks.
+- **Secrets** : `FLY_API_TOKEN` est stocké chiffré dans les secrets GitHub du dépôt ; `DATABASE_URL` est un secret Fly (posé par `fly postgres attach`). Ils sont injectés en variables d'environnement, masqués dans les logs, jamais transmis aux workflows de forks.
 - `concurrency` annule les exécutions obsolètes ; le cache uv garde le pipeline sous quelques minutes.
 
 ## 10. Déploiement
