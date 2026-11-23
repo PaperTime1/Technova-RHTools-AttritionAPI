@@ -1,0 +1,55 @@
+# Déploiement local : PostgreSQL 16 + initialisation de la base + API.
+#
+#   cp .env.example .env      # puis renseigner POSTGRES_PASSWORD
+#   docker compose up -d      # image publiée par la CI (ghcr.io)
+#   docker compose up -d --build   # ou image construite depuis le code local
+#
+# L'API écoute sur http://localhost:8000 (Swagger : /docs).
+
+name: technova-attrition
+
+x-api-image: &api-image
+  image: ${API_IMAGE:-ghcr.io/papertime1/technova-rhtools-attritionapi:latest}
+  build: .
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-technova}:${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}@db:5432/${POSTGRES_DB:-technova_attrition}
+    ENVIRONMENT: ${ENVIRONMENT:-production}
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-technova}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+      POSTGRES_DB: ${POSTGRES_DB:-technova_attrition}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Pas de port publié : la base n'est joignable que depuis le réseau interne
+
+  # Tâche unique avant chaque démarrage : crée les tables manquantes et insère
+  # le dataset s'il est absent (idempotent). L'API ne démarre que si elle réussit.
+  init:
+    <<: *api-image
+    command: ["sh", "-c", "python scripts/create_db.py && python scripts/insert_dataset.py"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *api-image
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

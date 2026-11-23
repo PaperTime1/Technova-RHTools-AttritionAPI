@@ -14,8 +14,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import inspect
-from app.models.database import Base
+
 from app.db.session import get_engine
+from app.models.database import Base
 
 
 def create_database():

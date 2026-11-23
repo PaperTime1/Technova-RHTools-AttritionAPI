@@ -1,8 +1,36 @@
 """Schémas Pydantic pour la validation des données d'entrée et de sortie."""
 
 from datetime import datetime
+from typing import Literal, get_args
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+# Domaines des variables catégorielles (modalités observées dans le dataset du P4).
+# Une valeur hors domaine est rejetée (422) au lieu d'être encodée silencieusement.
+StatutMarital = Literal["Célibataire", "Divorcé(e)", "Marié(e)"]
+Poste = Literal[
+    "Assistant de Direction",
+    "Cadre Commercial",
+    "Consultant",
+    "Directeur Technique",
+    "Manager",
+    "Représentant Commercial",
+    "Ressources Humaines",
+    "Senior Manager",
+    "Tech Lead",
+]
+DomaineEtude = Literal[
+    "Autre",
+    "Entrepreunariat",
+    "Infra & Cloud",
+    "Marketing",
+    "Ressources Humaines",
+    "Transformation Digitale",
+]
+
+STATUTS_MARITAUX: tuple[str, ...] = get_args(StatutMarital)
+POSTES: tuple[str, ...] = get_args(Poste)
+DOMAINES_ETUDE: tuple[str, ...] = get_args(DomaineEtude)
 
 
 class EmployeeInput(BaseModel):
@@ -16,10 +44,8 @@ class EmployeeInput(BaseModel):
     age: int = Field(..., ge=18, le=70, description="Âge de l'employé")
     genre: str = Field(..., pattern="^(M|F)$", description="Genre (M ou F)")
     revenu_mensuel: float = Field(..., ge=0, description="Revenu mensuel en euros")
-    statut_marital: str = Field(
-        ..., pattern="^(Célibataire|Marié\\(e\\)|Divorcé\\(e\\))$", description="Statut marital"
-    )
-    poste: str = Field(..., description="Intitulé du poste")
+    statut_marital: StatutMarital = Field(..., description="Statut marital")
+    poste: Poste = Field(..., description="Intitulé du poste")
     nombre_experiences_precedentes: int = Field(
         ..., ge=0, description="Nombre d'employeurs précédents"
     )
@@ -40,7 +66,7 @@ class EmployeeInput(BaseModel):
     nb_formations_suivies: int = Field(..., ge=0)
     distance_domicile_travail: int = Field(..., ge=0)
     niveau_education: int = Field(..., ge=1, le=5)
-    domaine_etude: str = Field(..., description="Domaine d'études")
+    domaine_etude: DomaineEtude = Field(..., description="Domaine d'études")
     frequence_deplacement: str = Field(
         ..., pattern="^(Aucun|Occasionnel|Frequent)$", description="Fréquence de déplacement"
     )
@@ -83,28 +109,48 @@ class PredictionOutput(BaseModel):
 
     probability: float = Field(..., ge=0, le=1, description="Probabilité de départ (0-1)")
     prediction: int = Field(..., ge=0, le=1, description="Prédiction binaire (0=resté, 1=parti)")
-    risk_level: str = Field(..., description="Niveau de risque (faible, modéré, élevé, critique)")
-    threshold: float = Field(..., description="Seuil de décision utilisé")
-    top_factors: list[dict] = Field(
-        default_factory=list, description="Top facteurs de risque (SHAP)"
+    risk_level: Literal["faible", "modéré", "élevé", "critique"] = Field(
+        ..., description="Niveau de risque ; « élevé » ou « critique » ⇔ prediction = 1"
     )
+    threshold: float = Field(..., gt=0, lt=1, description="Seuil de décision utilisé")
+    model_version: str = Field(..., description="Empreinte des artefacts du modèle servi")
+    request_id: int | None = Field(None, description="Identifiant de la requête tracée en base")
+
+
+class PredictionRecord(BaseModel):
+    """Prédiction stockée en base."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    probability: float
+    predicted_label: int
+    risk_level: str
+    threshold: float
+    model_version: str
 
 
 class PredictionLog(BaseModel):
-    """Log d'une prédiction stockée en BDD."""
+    """Requête tracée en base, avec sa prédiction éventuelle."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
-    timestamp: datetime
-    input_data: dict
-    probability: float
-    prediction: int
-    risk_level: str
+    created_at: datetime
+    client_id: int | None
+    employee_id: int | None
+    status: str
+    payload: dict
+    error_detail: str | None
+    latency_ms: float | None
+    prediction: PredictionRecord | None
 
 
 class HealthResponse(BaseModel):
     """Réponse du endpoint /health."""
 
-    status: str = "ok"
+    status: Literal["ok", "degraded"]
     environment: str
     model_loaded: bool
-    version: str = "0.1.0"
+    database: Literal["ok", "unavailable"]
+    model_version: str | None
+    version: str

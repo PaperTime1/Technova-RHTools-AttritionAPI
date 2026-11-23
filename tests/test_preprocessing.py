@@ -102,15 +102,50 @@ class TestEncodeFeatures:
         # Et il ne doit rester aucune colonne object
         assert result.select_dtypes(include="object").shape[1] == 0
 
+    def test_ohe_single_row_sets_indicator(self, sample_employee_data):
+        """Sur UNE ligne, l'indicatrice de la modalité observée doit valoir 1.
+
+        Régression : pd.get_dummies(drop_first=True) sans modalités fixées supprimait
+        l'unique colonne créée, et toutes les indicatrices valaient 0.
+        """
+        result = encode_features(pd.DataFrame([sample_employee_data]))
+        assert result["poste_Consultant"].iloc[0] == 1
+        assert result["domaine_etude_Infra & Cloud"].iloc[0] == 1
+        assert result["poste_Manager"].iloc[0] == 0
+
+    def test_ohe_columns_independent_of_batch(self, sample_employee_data):
+        """Les colonnes produites ne dépendent pas des modalités présentes dans le lot."""
+        other = {**sample_employee_data, "poste": "Manager", "statut_marital": "Marié(e)"}
+        one = encode_features(pd.DataFrame([sample_employee_data]))
+        two = encode_features(pd.DataFrame([sample_employee_data, other]))
+        assert list(one.columns) == list(two.columns)
+        pd.testing.assert_series_equal(one.iloc[0], two.iloc[0], check_names=False)
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("statut_marital", "Célibataire"),
+            ("poste", "Assistant de Direction"),
+            ("domaine_etude", "Autre"),
+        ],
+    )
+    def test_reference_category_all_zeros(self, sample_employee_data, field, value):
+        """La modalité de référence (supprimée par drop_first) donne des indicatrices nulles."""
+        data = {**sample_employee_data, field: value}
+        result = encode_features(pd.DataFrame([data]))
+        dummies = [c for c in result.columns if c.startswith(f"{field}_")]
+        assert dummies and (result[dummies].iloc[0] == 0).all()
+
 
 class TestPreprocessInput:
     """Tests du pipeline complet."""
 
-    def test_returns_numpy_array(self, sample_employee_data):
+    def test_returns_named_columns_in_model_order(self, sample_employee_data):
         service = get_prediction_service()
         employee = EmployeeInput(**sample_employee_data)
         result = preprocess_input(employee, service.features, service.scaler)
-        assert isinstance(result, np.ndarray)
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == list(service.model.feature_names_in_)
 
     def test_correct_shape(self, sample_employee_data):
         service = get_prediction_service()
@@ -122,4 +157,4 @@ class TestPreprocessInput:
         service = get_prediction_service()
         employee = EmployeeInput(**sample_employee_data)
         result = preprocess_input(employee, service.features, service.scaler)
-        assert not np.isnan(result).any()
+        assert not np.isnan(result.to_numpy()).any()

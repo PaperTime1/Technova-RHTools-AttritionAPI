@@ -1,29 +1,44 @@
 name: CI/CD Pipeline
 
+# CI : lint + tests à chaque push et à chaque pull request (validation avant fusion).
+# CD : l'image est publiée sur GitHub Container Registry, puis démarrée avec docker compose
+#      pour un smoke test. develop → image « staging » ; tag vX.Y.Z → « X.Y.Z » + « latest ».
+#      Déploiement : docker compose up sur la machine cible (déploiement local accepté).
 on:
   push:
     branches: [main, develop]
+    tags: ["v*.*.*"]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
+
+# Un seul pipeline actif par branche : une nouvelle poussée annule la précédente
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   PYTHON_VERSION: "3.11"
+  IMAGE: ghcr.io/papertime1/technova-rhtools-attritionapi
 
 jobs:
-  # ── Linting ──
+  # ── 1. Qualité du code (échec rapide) ──
   lint:
     name: Lint (Ruff)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
-      - run: uv tool run ruff check app/ tests/
+      - run: uvx ruff check app/ tests/ scripts/
 
-  # ── Tests ──
+  # ── 2. Tests sur un vrai PostgreSQL (même SGBD qu'en production) ──
   test:
-    name: Tests (Pytest)
+    name: Tests (Pytest + PostgreSQL 16)
     runs-on: ubuntu-latest
     needs: lint
+    environment: test
 
     services:
       postgres:
@@ -35,54 +50,101 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready"
+          --health-cmd="pg_isready -U test_user"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
 
     env:
-      DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/test_technova
       ENVIRONMENT: test
-      API_KEY: test-api-key
-      SECRET_KEY: test-secret-key
+      # Base éphémère du runner : identifiants jetables, pas un secret
+      TEST_DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/test_technova
+      DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/test_technova
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml  # pas de uv.lock versionné
 
       - name: Install dependencies
         run: uv pip install --system ".[dev]"
 
-      - name: Run tests with coverage
-        run: pytest --cov=app --cov-report=xml --cov-report=term-missing
+      - name: Run tests (coverage lignes + branches, seuil 85 %)
+        run: >-
+          pytest --cov=app --cov-branch
+          --cov-report=xml --cov-report=html --cov-report=term-missing
+          --cov-fail-under=85
 
       - name: Upload coverage report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: coverage.xml
+          path: |
+            coverage.xml
+            htmlcov/
 
-  # ── Deploy (production uniquement) ──
-  deploy:
-    name: Deploy to Fly.io
+  # ── 3. Build de l'image (vérifie que le Dockerfile construit) ──
+  build:
+    name: Docker build
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t technova-attrition-api:${{ github.sha }} .
 
+  # ── 4. Publication de l'image (staging sur develop, production sur tag) ──
+  publish:
+    name: Publish → ${{ startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging' }}
+    runs-on: ubuntu-latest
+    needs: build
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v'))
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging' }}
+    permissions:
+      contents: read
+      packages: write  # publier sur ghcr.io avec le GITHUB_TOKEN éphémère du job
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Tags de l'image
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=sha
 
-      - name: Deploy
-        run: flyctl deploy --remote-only
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      # Démarre la pile complète (base + init + API) avec l'image publiée
+      - name: Smoke test (docker compose)
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          POSTGRES_PASSWORD: smoke-test-only  # base éphémère du runner
+        run: |
+          export API_IMAGE="${{ env.IMAGE }}:sha-${GITHUB_SHA::7}"
+          docker compose up -d --no-build --wait api
+          curl --fail --retry 5 --retry-delay 3 http://localhost:8000/health
+          docker compose down -v

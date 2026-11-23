@@ -1,6 +1,6 @@
 [project]
 name = "technova-rhtools-attritionapi"
-version = "0.1.0"
+version = "1.0.0"
 description = "API de prédiction d'attrition — TechNova Partners"
 requires-python = ">=3.11,<3.13"
 
@@ -12,9 +12,9 @@ dependencies = [
     "pydantic-settings>=2.6",
 
     # ── ML ──
-    "scikit-learn>=1.5",
+    "scikit-learn==1.6.1",  # version exacte des artefacts joblib (pickle)
     "joblib>=1.4",
-    "numpy>=1.26",
+    "numpy>=2.0",  # les artefacts ont été sérialisés avec numpy 2.x
     "pandas>=2.2",
 
     # ── Base de données ──
@@ -22,9 +22,6 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "alembic>=1.14",
 
-    # ── Sécurité ──
-    "python-jose[cryptography]>=3.3",
-    "passlib[bcrypt]>=1.7",
 
     # ── Utilitaires ──
     "python-dotenv>=1.0",
@@ -53,4 +50,5 @@ ignore = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
 addopts = "-v --tb=short --cov=app --cov-report=term-missing --cov-report=html"

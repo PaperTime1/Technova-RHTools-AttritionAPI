@@ -1,37 +1,40 @@
-"""Script d'insertion du dataset complet dans PostgreSQL.
+"""Insertion du dataset complet (1 470 employés) dans la table employees.
 
 Usage :
-    python scripts/insert_dataset.py
+    python scripts/insert_dataset.py            # n'insère que si la table est vide (idempotent)
+    python scripts/insert_dataset.py --replace  # vide la table puis réinsère
 
 Ce script :
-1. Charge les 3 CSV sources (SIRH, évaluations, sondage)
-2. Les joint en un DataFrame central
-3. Insère les données dans la table 'employees'
+1. charge les 3 CSV sources (SIRH, évaluations, sondage) ;
+2. les joint en un DataFrame central (jointure 1:1 vérifiée) ;
+3. insère les lignes dans employees en UNE transaction (tout ou rien).
+
+Non interactif : il peut être lancé automatiquement au déploiement (service init de Compose).
 """
 
+import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import pandas as pd
-import numpy as np
-from sqlalchemy.orm import Session
+import pandas as pd  # noqa: E402
+from sqlalchemy import delete, insert  # noqa: E402
 
-from app.models.database import Employee
-from app.db.session import get_engine, get_session_factory
+from app.db.crud import get_employee_count  # noqa: E402
+from app.db.session import get_session_factory  # noqa: E402
+from app.models.database import Employee  # noqa: E402
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
-DATA_DIR = Path("data")
-
-
-def load_and_join() -> pd.DataFrame:
-    """Charge et joint les 3 fichiers sources."""
+def load_and_join(data_dir: Path = DATA_DIR) -> pd.DataFrame:
+    """Charge et joint les 3 fichiers sources (clé : identifiant employé)."""
     print("Chargement des fichiers sources...")
 
-    sirh = pd.read_csv(DATA_DIR / "extrait_sirh.csv")
-    eval_ = pd.read_csv(DATA_DIR / "extrait_eval.csv")
-    sondage = pd.read_csv(DATA_DIR / "extrait_sondage.csv")
+    sirh = pd.read_csv(data_dir / "extrait_sirh.csv")
+    eval_ = pd.read_csv(data_dir / "extrait_eval.csv")
+    sondage = pd.read_csv(data_dir / "extrait_sondage.csv")
 
     # Harmonisation des clés
     eval_["id_employee"] = eval_["eval_number"].str.replace("E_", "", regex=False).astype(int)
@@ -45,59 +48,50 @@ def load_and_join() -> pd.DataFrame:
     )
     eval_ = eval_.drop(columns=["eval_number"])
 
-    # Jointure
-    df = sirh.merge(eval_, on="id_employee", how="inner").merge(sondage, on="id_employee", how="inner")
+    # Jointure 1:1 : validate lève une erreur si une clé est dupliquée
+    df = sirh.merge(eval_, on="id_employee", how="inner", validate="one_to_one").merge(
+        sondage, on="id_employee", how="inner", validate="one_to_one"
+    )
+    if len(df) != len(sirh):
+        raise ValueError(f"Jointure incomplète : {len(df)} lignes pour {len(sirh)} employés")
 
-    # Target
+    # Cible
     df["attrition"] = (df["a_quitte_l_entreprise"] == "Oui").astype(int)
-    df = df.drop(columns=["a_quitte_l_entreprise", "id_employee"])
+    df = df.drop(columns=["a_quitte_l_entreprise"])
 
     print(f"  {df.shape[0]} employés, {df.shape[1]} colonnes")
     return df
 
 
-def insert_employees(df: pd.DataFrame):
-    """Insère les employés dans la table PostgreSQL."""
-    engine = get_engine()
-    SessionLocal = get_session_factory()
-    session = SessionLocal()
+def to_records(df: pd.DataFrame) -> list[dict]:
+    """Prépare les lignes pour la table employees (id_employee devient la clé primaire)."""
+    return df.rename(columns={"id_employee": "id"}).to_dict(orient="records")
 
+
+def insert_employees(df: pd.DataFrame, replace: bool = False) -> int:
+    """Insère les employés en une transaction. Retourne le nombre de lignes en base."""
+    session = get_session_factory()()
     try:
-        # Vérifier si la table est déjà peuplée
-        existing = session.query(Employee).count()
-        if existing > 0:
-            print(f"  Table employees contient déjà {existing} lignes.")
-            response = input("  Supprimer et réinsérer ? (o/N) : ")
-            if response.lower() != "o":
-                print("  Insertion annulée.")
-                return
-            session.query(Employee).delete()
-            session.commit()
-
-        # Insertion
-        print(f"Insertion de {len(df)} employés...")
-        records = df.to_dict(orient="records")
-
-        for i, record in enumerate(records):
-            employee = Employee(**record)
-            session.add(employee)
-
-            if (i + 1) % 200 == 0:
-                session.commit()
-                print(f"  {i + 1}/{len(records)} insérés...")
-
+        existing = get_employee_count(session)
+        if existing and not replace:
+            print(f"  Table employees déjà peuplée ({existing} lignes) : rien à faire.")
+            return existing
+        if existing:
+            session.execute(delete(Employee))
+        session.execute(insert(Employee), to_records(df))
         session.commit()
-        final_count = session.query(Employee).count()
-        print(f"\n✓ {final_count} employés insérés en base.")
-
-    except Exception as e:
+        count = get_employee_count(session)
+        print(f"✓ {count} employés en base.")
+        return count
+    except Exception:
         session.rollback()
-        print(f"✗ Erreur : {e}")
         raise
     finally:
         session.close()
 
 
 if __name__ == "__main__":
-    df = load_and_join()
-    insert_employees(df)
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--replace", action="store_true", help="vider la table avant insertion")
+    args = parser.parse_args()
+    insert_employees(load_and_join(), replace=args.replace)
