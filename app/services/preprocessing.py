@@ -7,7 +7,15 @@ adaptées pour traiter une seule observation (via l'API).
 import numpy as np
 import pandas as pd
 
-from app.models.schemas import EmployeeInput
+from app.models.schemas import DOMAINES_ETUDE, POSTES, STATUTS_MARITAUX, EmployeeInput
+
+# Modalités des variables nominales, dans l'ordre trié utilisé au P4
+# (la première est la modalité de référence supprimée par drop_first).
+NOMINAL_CATEGORIES: dict[str, list[str]] = {
+    "statut_marital": sorted(STATUTS_MARITAUX),
+    "poste": sorted(POSTES),
+    "domaine_etude": sorted(DOMAINES_ETUDE),
+}
 
 
 def employee_to_dataframe(employee: EmployeeInput) -> pd.DataFrame:
@@ -56,9 +64,15 @@ def encode_features(data: pd.DataFrame) -> pd.DataFrame:
         {"Aucun": 0, "Occasionnel": 1, "Frequent": 2}
     )
 
-    # One-Hot Encoding
-    cols_nominales = ["statut_marital", "poste", "domaine_etude"]
-    encoded = pd.get_dummies(encoded, columns=cols_nominales, drop_first=True)
+    # One-Hot Encoding à modalités FIXES.
+    # pd.get_dummies ne connaît que les modalités présentes dans les lignes reçues :
+    # sur une seule ligne avec drop_first=True, l'unique colonne créée était supprimée,
+    # et toutes les indicatrices valaient 0 (training-serving skew). En déclarant les
+    # modalités du P4 (triées, comme le fait get_dummies sur le dataset complet), on
+    # obtient les mêmes colonnes quel que soit le nombre de lignes.
+    for col, categories in NOMINAL_CATEGORIES.items():
+        encoded[col] = pd.Categorical(encoded[col], categories=categories)
+    encoded = pd.get_dummies(encoded, columns=list(NOMINAL_CATEGORIES), drop_first=True)
 
     # bool → int
     bool_cols = encoded.select_dtypes(include="bool").columns
@@ -67,7 +81,7 @@ def encode_features(data: pd.DataFrame) -> pd.DataFrame:
     return encoded
 
 
-def preprocess_input(employee: EmployeeInput, features: list[str], scaler) -> np.ndarray:
+def preprocess_input(employee: EmployeeInput, features: list[str], scaler) -> pd.DataFrame:
     """
     Pipeline complet : EmployeeInput → vecteur prêt pour le modèle.
 
@@ -79,7 +93,8 @@ def preprocess_input(employee: EmployeeInput, features: list[str], scaler) -> np
 
     Retourne
     --------
-    np.ndarray de shape (1, n_features) — vecteur scalé
+    pd.DataFrame de shape (1, n_features) — vecteur scalé, colonnes nommées.
+    Les noms permettent à scikit-learn de vérifier l'ordre des features.
     """
     # 1. Pydantic → DataFrame
     df = employee_to_dataframe(employee)
@@ -90,18 +105,16 @@ def preprocess_input(employee: EmployeeInput, features: list[str], scaler) -> np
     # 3. Encoding
     df = encode_features(df)
 
-    # 4. Aligner les colonnes avec celles du modèle
-    # Les colonnes OHE manquantes (ex: poste_Manager si l'input est Consultant)
-    # doivent être ajoutées à 0
-    for col in features:
-        if col not in df.columns:
-            df[col] = 0
-
-    # Ne garder que les colonnes attendues, dans le bon ordre
+    # 4. Garder les colonnes attendues, dans l'ordre du modèle.
+    # Toutes doivent exister : une colonne manquante signale une incohérence entre
+    # l'encodage et les artefacts, qu'on refuse au lieu de la combler silencieusement par 0.
+    missing = [col for col in features if col not in df.columns]
+    if missing:
+        raise ValueError(f"Features attendues par le modèle absentes après encodage : {missing}")
     df = df[features]
 
     # 5. Scaling
     df_float = df.astype(float)
     scaled_array = scaler.transform(df_float)
 
-    return scaled_array
+    return pd.DataFrame(scaled_array, columns=features, index=df.index)

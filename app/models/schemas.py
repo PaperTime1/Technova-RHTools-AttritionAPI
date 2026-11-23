@@ -1,8 +1,36 @@
 """Schémas Pydantic pour la validation des données d'entrée et de sortie."""
 
 from datetime import datetime
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field
+
+# Domaines des variables catégorielles (modalités observées dans le dataset du P4).
+# Une valeur hors domaine est rejetée (422) au lieu d'être encodée silencieusement.
+StatutMarital = Literal["Célibataire", "Divorcé(e)", "Marié(e)"]
+Poste = Literal[
+    "Assistant de Direction",
+    "Cadre Commercial",
+    "Consultant",
+    "Directeur Technique",
+    "Manager",
+    "Représentant Commercial",
+    "Ressources Humaines",
+    "Senior Manager",
+    "Tech Lead",
+]
+DomaineEtude = Literal[
+    "Autre",
+    "Entrepreunariat",
+    "Infra & Cloud",
+    "Marketing",
+    "Ressources Humaines",
+    "Transformation Digitale",
+]
+
+STATUTS_MARITAUX: tuple[str, ...] = get_args(StatutMarital)
+POSTES: tuple[str, ...] = get_args(Poste)
+DOMAINES_ETUDE: tuple[str, ...] = get_args(DomaineEtude)
 
 
 class EmployeeInput(BaseModel):
@@ -16,10 +44,8 @@ class EmployeeInput(BaseModel):
     age: int = Field(..., ge=18, le=70, description="Âge de l'employé")
     genre: str = Field(..., pattern="^(M|F)$", description="Genre (M ou F)")
     revenu_mensuel: float = Field(..., ge=0, description="Revenu mensuel en euros")
-    statut_marital: str = Field(
-        ..., pattern="^(Célibataire|Marié\\(e\\)|Divorcé\\(e\\))$", description="Statut marital"
-    )
-    poste: str = Field(..., description="Intitulé du poste")
+    statut_marital: StatutMarital = Field(..., description="Statut marital")
+    poste: Poste = Field(..., description="Intitulé du poste")
     nombre_experiences_precedentes: int = Field(
         ..., ge=0, description="Nombre d'employeurs précédents"
     )
@@ -40,7 +66,7 @@ class EmployeeInput(BaseModel):
     nb_formations_suivies: int = Field(..., ge=0)
     distance_domicile_travail: int = Field(..., ge=0)
     niveau_education: int = Field(..., ge=1, le=5)
-    domaine_etude: str = Field(..., description="Domaine d'études")
+    domaine_etude: DomaineEtude = Field(..., description="Domaine d'études")
     frequence_deplacement: str = Field(
         ..., pattern="^(Aucun|Occasionnel|Frequent)$", description="Fréquence de déplacement"
     )
