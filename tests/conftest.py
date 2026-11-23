@@ -1,32 +1,55 @@
-"""Fixtures Pytest partagées pour tous les tests."""
+"""Fixtures Pytest partagées pour tous les tests.
+
+Base de test :
+- TEST_DATABASE_URL défini (CI : service PostgreSQL 16) : on teste sur le même SGBD qu'en
+  production (JSONB, contraintes CHECK, clés étrangères) ;
+- sinon, SQLite local (rapide, mais un autre SGBD : à réserver au développement).
+Chaque test démarre avec des tables vides.
+"""
+
+import os
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.config import get_settings
+from app.db import crud
 from app.db.session import get_db
 from app.main import app
 from app.models.database import Base
+from app.security import generate_api_key
 
-# ── BDD de test en mémoire (SQLite) ──
-SQLALCHEMY_TEST_URL = "sqlite:///./test.db"
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite://")
+IS_SQLITE = TEST_DATABASE_URL.startswith("sqlite")
 
-test_engine = create_engine(
-    SQLALCHEMY_TEST_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestSessionLocal = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
+if IS_SQLITE:
+    test_engine = create_engine(
+        TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+
+    @event.listens_for(test_engine, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, _record):
+        dbapi_connection.execute("PRAGMA foreign_keys=ON")  # SQLite ignore les FK par défaut
+
+else:
+    test_engine = create_engine(
+        TEST_DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+    )
+
+TestSessionLocal = sessionmaker(bind=test_engine, autoflush=False, expire_on_commit=False)
 
 
 def override_get_db():
-    """Remplace la session PostgreSQL par SQLite pour les tests."""
+    """Même contrat que get_db (commit / rollback), sur la base de test."""
     db = TestSessionLocal()
     try:
         yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -36,10 +59,20 @@ def override_get_db():
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
-    """Crée les tables au début de la session de tests."""
+    """Crée le schéma au début de la session de tests."""
+    Base.metadata.drop_all(bind=test_engine)
     Base.metadata.create_all(bind=test_engine)
     yield
     Base.metadata.drop_all(bind=test_engine)
+
+
+@pytest.fixture(autouse=True)
+def clean_tables():
+    """Vide toutes les tables après chaque test (isolation)."""
+    yield
+    with test_engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
 
 
 @pytest.fixture
@@ -55,18 +88,31 @@ def db_session():
 
 @pytest.fixture
 def client():
-    """Client FastAPI pour les tests d'endpoints."""
+    """Client FastAPI branché sur la base de test."""
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
 
 
+def _make_client(name: str, role: str) -> str:
+    key = generate_api_key()
+    with TestSessionLocal() as db:
+        crud.create_api_client(db, name, key, role)
+        db.commit()
+    return key
+
+
 @pytest.fixture
-def api_key():
-    """Clé API valide pour les tests."""
-    settings = get_settings()
-    return settings.api_key
+def api_key() -> str:
+    """Clé valide d'un client de rôle 'predict'."""
+    return _make_client("test-predict", "predict")
+
+
+@pytest.fixture
+def admin_api_key() -> str:
+    """Clé valide d'un client de rôle 'admin'."""
+    return _make_client("test-admin", "admin")
 
 
 @pytest.fixture

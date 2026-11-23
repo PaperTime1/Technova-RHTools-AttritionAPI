@@ -26,7 +26,7 @@ pytestmark = pytest.mark.skipif(
 def _load_dataset() -> pd.DataFrame:
     from scripts.insert_dataset import load_and_join
 
-    return load_and_join()
+    return load_and_join(DATA_DIR)
 
 
 def _reference_probabilities(df: pd.DataFrame, service) -> np.ndarray:

@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint run docker-build docker-run db-create db-insert deploy
+.PHONY: help install dev test lint format run docker-build docker-run db-create db-insert api-client deploy
 
 help: ## Affiche cette aide
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -10,10 +10,10 @@ dev: ## Installe les dépendances (dev inclus)
 	uv pip install --system ".[dev]"
 
 test: ## Lance les tests avec couverture
-	pytest --cov=app --cov-report=term-missing --cov-report=html
+	pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=html
 
 lint: ## Vérifie le code avec Ruff
-	ruff check app/ tests/
+	ruff check app/ tests/ scripts/
 	ruff format --check app/ tests/
 
 format: ## Formate le code
@@ -36,3 +36,6 @@ docker-run: ## Lance le container Docker
 
 deploy: ## Déploie sur Fly.io
 	flyctl deploy --remote-only
+
+api-client: ## Crée un client de l'API (usage : make api-client NAME=rh ROLE=predict)
+	python scripts/create_api_client.py --name $(NAME) --role $(or $(ROLE),predict)
