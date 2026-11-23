@@ -9,7 +9,7 @@ Ce script :
 2. les joint en un DataFrame central (jointure 1:1 vérifiée) ;
 3. insère les lignes dans employees en UNE transaction (tout ou rien).
 
-Non interactif : il peut être lancé automatiquement au déploiement (release_command Fly.io).
+Non interactif : il peut être lancé automatiquement au déploiement (service init de Compose).
 """
 
 import argparse

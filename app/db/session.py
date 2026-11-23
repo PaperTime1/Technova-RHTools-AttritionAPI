@@ -18,7 +18,7 @@ def get_engine() -> Engine:
     settings = get_settings()
     return create_engine(
         settings.database_url_safe,
-        pool_pre_ping=True,  # détecte les connexions coupées (machines Fly.io mises en veille)
+        pool_pre_ping=True,  # détecte les connexions coupées (base redémarrée)
         echo=False,
     )
 

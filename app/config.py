@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     @property
     def database_url_safe(self) -> str:
-        """Normalise l'URL pour SQLAlchemy (Fly.io fournit postgres://)."""
+        """Normalise l'URL pour SQLAlchemy (certains hébergeurs fournissent postgres://)."""
         url = self.database_url
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg://", 1)

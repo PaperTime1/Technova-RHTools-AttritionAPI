@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format run docker-build docker-run db-create db-insert api-client deploy
+.PHONY: help install dev test lint format run docker-build up down logs db-create db-insert api-client
 
 help: ## Affiche cette aide
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -31,11 +31,14 @@ db-insert: ## Insère le dataset dans la base
 docker-build: ## Build l'image Docker
 	docker build -t technova-attrition-api .
 
-docker-run: ## Lance le container Docker
-	docker run -p 8000:8000 --env-file .env technova-attrition-api
+up: ## Déploie en local : base + initialisation + API (docker compose)
+	docker compose up -d
 
-deploy: ## Déploie sur Fly.io
-	flyctl deploy --remote-only
+down: ## Arrête la pile (les données restent dans le volume pgdata)
+	docker compose down
+
+logs: ## Suit les logs de l'API
+	docker compose logs -f api
 
 api-client: ## Crée un client de l'API (usage : make api-client NAME=rh ROLE=predict)
 	python scripts/create_api_client.py --name $(NAME) --role $(or $(ROLE),predict)

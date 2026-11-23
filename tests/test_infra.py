@@ -19,7 +19,7 @@ class TestConfig:
         ],
     )
     def test_database_url_normalized(self, url, expected_prefix):
-        """Fly.io fournit postgres:// : l'URL est convertie pour le driver psycopg 3."""
+        """Une URL postgres:// (fournie par certains hébergeurs) est convertie pour psycopg 3."""
         assert Settings(database_url=url).database_url_safe.startswith(expected_prefix)
 
     def test_invalid_environment_rejected(self):

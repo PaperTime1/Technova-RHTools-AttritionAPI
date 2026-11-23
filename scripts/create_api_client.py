@@ -8,7 +8,7 @@ La clé est générée aléatoirement (256 bits) et affichée UNE SEULE FOIS : s
 empreinte SHA-256 est stockée en base. En cas de perte, on révoque le client et on en crée
 un nouveau.
 
-En production (Fly.io) : fly ssh console -C "python scripts/create_api_client.py --name ..."
+Avec Docker Compose : docker compose exec api python scripts/create_api_client.py --name ...
 """
 
 import argparse
